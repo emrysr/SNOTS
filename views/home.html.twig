@@ -1,0 +1,10 @@
+{% extends request.ajax ? "base_ajax.html.twig" : "base.html.twig" %}
+
+{% block title page_title|title %}
+
+{% block content %}
+    <h1>Home</h1>
+    <p class="important">
+        See the sqlite tests:
+    </p>
+{% endblock %}
