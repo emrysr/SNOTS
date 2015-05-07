@@ -34,10 +34,17 @@ class __TwigTemplate_a057d015d4ea1f87a695915b2b4d26e46563b5b3874b9c79888cb0bb56b
     public function block_content($context, array $blocks = array())
     {
         // line 6
-        echo "    <h1>Home</h1>
-    <p class=\"important\">
-        See the sqlite tests:
-    </p>
+        echo "    <h1>Start</h1>
+    <p class=\"lead\">Is a mixture of smaller framework components better than one large one?</p>
+    <ul>
+    \t<li>Create base framework</li>
+    \t<li>Create Tests</li>
+    \t<li>CRUD</li>
+    \t<li>Speed Tests</li>
+    \t<li>Backups</li>
+    \t<li>Restore</li>
+    \t<li>Size limitations</li>
+    </ul>
 ";
     }
 
