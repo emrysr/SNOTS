@@ -2,3 +2,8 @@
 ```
 php -S localhost:8000 -t public
 ```
+
+# install all the required includes
+```
+composer update
+```
