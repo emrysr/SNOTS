@@ -1,78 +1,102 @@
-<?php 
+<?php
+use \Psr\Http\Message\ServerRequestInterface as Request;
+use \Psr\Http\Message\ResponseInterface as Response;
+use \PDO as PDO;
+
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 ini_set('display_errors',1);
 ini_set('display_startup_errors',1);
 error_reporting(-1);
 
-//SLIM
 
-$app = new \Slim\Slim(array(
-	'mode' => 'development',
-    'view' => new \Slim\Views\Twig(),
-    'templates.path' => dirname(__DIR__) . '/views'
-));
+$db = new PDO('sqlite:'.dirname(__DIR__) . '/db/test.db');
 
-// Only invoked if mode is "production"
-$app->configureMode('production', function () use ($app) {
-    $app->config(array(
-        'log.enable' => true,
-        'debug' => false
-    ));
-});
+//-----------------
+// SLIM
+$c = new \Slim\Container(); //Create Your container
+$settings = $c->get('settings');
+$settings->replace([
+    'displayErrorDetails' => true,
+    'logger' => [
+        'name' => 'skel-app',
+        'level' => Monolog\Logger::DEBUG,
+        'path' => __DIR__ . '/../logs/app.log',
+    ]
+]);
 
-// Only invoked if mode is "development"
-$app->configureMode('development', function () use ($app) {
-    $app->config(array(
-        'log.enable' => false,	
+//Override the default Not Found Handler before creating App
+$c['notFoundHandler'] = function ($c) {
+    return function ($request, $response) use ($c) {
+        return $response->withStatus(404)
+            ->withHeader('Content-Type', 'text/html')
+            ->write('Page not found');
+    };
+};
+$app = new \Slim\App($c);
+
+
+//-----------------
+// TWIG TEMPLATES
+// Get container
+$container = $app->getContainer();
+
+// Register component on container
+$container['view'] = function ($container) {
+    $view = new \Slim\Views\Twig(dirname(__DIR__) . '/views', [
+        'cache' => dirname(__DIR__) . '/cache',
         'debug' => true
-    ));
-});
+    ]);
+    // global template variables
+    $view->getEnvironment()->addGlobal("current_path", $container["request"]->getUri()->getPath());
+    // Instantiate and add Slim specific extension
+    $router = $container->get('router');
+    $uri = \Slim\Http\Uri::createFromEnvironment(new \Slim\Http\Environment($_SERVER));
+    $view->addExtension(new \Slim\Views\TwigExtension($router, $uri));
 
-
-
-//NOTORM
-
-try {
-    // Connect to the SQLite Database.
-    $pdo = new PDO('sqlite:'.dirname(__DIR__) . '/db/test.db');
-    $db = new NotORM($pdo);
-    
-} catch(Exception $e) {
-    die('connection_unsuccessful: ' . $e->getMessage());
-}
-
-
-//TWIG
-
-
-$twig = $app->view();
-
-$twig->parserOptions = array(
-    'debug' => true,
-    'cache' => dirname(__DIR__) . '/cache'
-);
-$twig->parserExtensions = array(
-    new \Slim\Views\TwigExtension()
-);
-
+    return $view;
+};
 
 
 
 //ROUTES
 //-----------------
 
+$app->get('/', function (Request $request, Response $response, array $args) use ($db) {
+    $query = "SELECT timestamp,url,count(*) as total FROM likes GROUP BY url";
+    return $this->view->render($response, 'home.html.twig',[
+        'rows'=>$db->query($query),
+        'title'=>'list'
+    ]);
+})->setName('home');
 
-$app->notFound(function () use ($app){
-	$req = $app->request();
-	echo '404 '.$req->getPath();
+$app->get('/likes', function (Request $request, Response $response, array $args) use ($db) {
+    $query = "SELECT timestamp,url,count(*) as total FROM likes GROUP BY url";
+    $sth = $db->prepare($query);
+    $sth->execute();
+
+    return $response->withJson([
+        'data'=> [
+            'likes' => $sth->fetchAll(PDO::FETCH_ASSOC)
+        ]
+    ]);
 });
 
-$app->get('/', function () use ($app) {
-    $app->render('home.html.twig');
-})->name('dash');
-
-
+$app->post('/likes', function(Request $request, Response $response, array $args) use ($db) {
+    $time = time();
+    $rating = intval(rand(1,5));
+    $url = $_REQUEST['url'];
+    $insert = sprintf("INSERT INTO likes (url) VALUES ('%s')",$url);
+    $dbResponse = $db->query($insert);
+    if(!$dbResponse) {
+        return $response->withJson(["error" => $db->errorInfo()],500);
+    }
+    return $response->withJson([
+        'data'=> [
+            'last-inserted'=>$db->lastInsertId()
+        ]
+    ], 200);
+});
 
 
 $app->run();
