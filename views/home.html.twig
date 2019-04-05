@@ -2,17 +2,38 @@
 
 {% block title title %}
 
+{% block messages %}
+    {% for type,message in messages %}
+        <div class="alert alert-{{type}} alert-dismissible fade show">
+        {% for line in message %}
+            {{line}}
+        {% endfor %}
+        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+        </button>
+        </div>
+    {% endfor %}
+{% endblock %}
+
+
 
 {% block content %}
-
-<form id="submit" class="text-left">
+<h1 class="display-4 text-uppercase">Add:</h1>
+<form id="submit" class="needs-validation" novalidate>
     <div class="form-group">
         <div class="input-group">
             <div class="input-group-prepend">
                 <button class="btn btn-primary btn-lg"><svg class="icon"><use xlink:href="#bawd"></use></svg></button>
             </div>
-            <input type="url" name="url" class="form-control form-control-lg" placeholder="https://" aria-describedby="urlHelpBlock">
+            <input type="url" name="url" class="form-control form-control-lg" placeholder="https://" aria-describedby="urlHelpBlock" required>
+            <small class="valid-feedback">
+                Looks good!
+            </small>
+            <small class="invalid-feedback">
+                Please choose a valid URL
+            </small>
         </div>
+
         <small id="urlHelpBlock" class="form-text text-muted">
         "High-five" a website
         </small>
@@ -20,16 +41,43 @@
 </form>
 
 
-<div class="list-group mb-5">
-    {% for row in rows %}
-    <a class="list-group-item d-flex justify-content-between align-items-center" href="#">
-    <span>{{row.url}} <small>{{row.timestamp|date("F jS \\a\\t g:ia")}}</small></span>
-    <span class="badge badge-primary badge-pill" data-url="{{row.url}}">{{row.total}}</span>
-    </a>
-    {% endfor %}
-</div>
 
+<h1 class="display-4 text-uppercase">Added likes:</h1>
+<ul id="likes-list" class="list-group mb-5">
+    {% for item in urls %}
+    <li class="list-group-item" data-url="{{item.url}}">
+        <article class="d-flex justify-content-between align-items-center mb-0">
+            <header>
+                <a href="likes/{{item.url|base64}}" data-url="{{item.url}}" class="mr-1">
+                    {{item.url}}
+                </a> 
+                <small class="text-muted font-italic font-weight-light">{{item.timestamp|date("F jS \\a\\t g:ia")}}</small>
+            </header>
+            <footer>
+                <btn title="Remove" data-delete-row class="btn btn-danger">&times;</btn>
+                <output class="badge badge-primary badge-pill">{{item.total}}</output>
+            </footer>
+        </article>
+    </li>
+    {% endfor %}
+</ul>
+<template id="likes-list-item">
+    <li class="list-group-item" data-url="">
+        <article class="d-flex justify-content-between align-items-center mb-0">
+            <header>
+                <a href="likes/" data-url="" class="mr-1"></a> 
+                <small class="text-muted font-italic font-weight-light"></small>
+            </header>
+            <footer>
+                <btn title="Remove" data-delete-row class="btn btn-danger">&times;</btn>
+                <output class="badge badge-primary badge-pill"></output>
+            </footer>
+        </article>
+    </li>
+</template>
 {% endblock %}
+
+
 
 
 {% block css %}
@@ -46,44 +94,104 @@
     opacity: 1;
   }
 }
+
+[data-delete-row] {
+    position: absolute;
+    display: none;
+    animation: fadeIn .2s;
+    top:.33em;
+    right:.5em;
+    cursor: pointer;
+}
+
+[data-url]:hover [data-delete-row] {
+    display: inline-block
+}
+[data-url]:hover output {
+    display: none;
+    animation: fadeIn .2s;
+}
 </style>
 {% endblock %}
 
-
 {% block js %}
 <script>
+// form submit event
 document.querySelector('#submit').addEventListener('submit', function (e) {
     e.preventDefault()
-
-    var url = e.target.querySelector('[name="url"]').value
-    var data = new FormData(e.target)
+    var form = e.target
+    var url = form.querySelector('[name="url"]').value
+    var form_data = new FormData(form)
         // if input valid
         var url_pattern = /^(?:(?:(?:https?|ftp):)?\/\/)(?:\S+(?::\S*)?@)?(?:(?!(?:10|127)(?:\.\d{1,3}){3})(?!(?:169\.254|192\.168)(?:\.\d{1,3}){2})(?!172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?:[1-9]\d?|1\d\d|2[01]\d|22[0-3])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(?:(?:[a-z\u00a1-\uffff0-9]-*)*[a-z\u00a1-\uffff0-9]+)(?:\.(?:[a-z\u00a1-\uffff0-9]-*)*[a-z\u00a1-\uffff0-9]+)*(?:\.(?:[a-z\u00a1-\uffff]{2,})).?)(?::\d{2,5})?(?:[/?#]\S*)?$/i;
         if(url_pattern.test( url )) {
-            data.append('url', url)
+            // @todo: base64 encode url to save space in db
+            // eg. url = b64EncodeUnicode(url);
+
+            form_data.append('url', url)
             try {
-                post('/likes', updateView, data)
+                post('/likes', updateView, form_data)
             } catch (e) {
                 showError(e)
             }
         }
     return false
 });
-var likes = null;
+var likes = JSON.parse('{{ urls|json_encode|e('js') }}');
 
+// @todo: rename from likes to urls
+
+// update the list of likes
 function updateView(error, data) {
     if (error) throw error
     get('/likes', function(error, response) {
         if (error) throw error
-        likes = JSON.parse(response).data.likes
+        let likes = JSON.parse(response).data.likes
+        // @todo: update list with new rows if new url sent
+        if(window.likes.length!==likes.length) {
+            // add missing row
+            const list = document.getElementById('likes-list')
+            const container = document.createElement('div')
+            likes.forEach((like) => {
+                if (like.url === document.querySelector('#submit [name="url"]').value) {
+                    const tmpl = document.getElementById('likes-list-item').content.cloneNode(true);
+                    tmpl.querySelector('a').innerText = like.url;
+                    tmpl.querySelector('a').dataset.url = like.url;
+                    tmpl.querySelector('a').setAttribute('href','likes/'+b64EncodeUnicode(like.url));
+                    tmpl.querySelector('small').innerText = like.timestamp;
+                    tmpl.querySelector('output').innerText = like.total;
+                    container.appendChild(tmpl);
+                }
+            });
+            // add to DOM
+            list.appendChild(container.firstElementChild)
+            // update global list with most recent
+            window.likes = likes
+        }
+
         likes.forEach(like => {
-            let badge = document.querySelectorAll('.badge[data-url="'+like.url+'"]')[0]
-            badge.innerText = like.total
-            badge.classList.remove('fadeIn')
-            setTimeout(function(){
-                badge.classList.add('fadeIn')
-            },10)
+            // SHOW UPDATED ROW
+            if (like.url === document.querySelector('#submit [name="url"]').value) {
+                // update counter in list
+                let badge = document.querySelectorAll('#likes-list [data-url="'+like.url+'"] .badge')[0]
+                if(badge) {
+                    badge.innerText = like.total
+                    
+                    // fade badge in when updated
+                    badge.classList.remove('fadeIn')
+                    setTimeout(function(){
+                        badge.classList.add('fadeIn')
+                    },10)
+                }
+            }
         });
+        
+        // remove successful validation message after 2s
+        if (typeof timeout !== 'undefined') clearTimeout(timeout)
+        timeout = setTimeout(function(){
+            form = document.querySelector('#submit')
+            form.classList.remove('was-validated')
+        },2000)
     }, data)
 }
 
@@ -115,18 +223,58 @@ function request(url, callback, data, method) {
   xhr.open(method, url, async)
   xhr.send(data)
 }
-/**
- * request() function wrapper with POST verb
- */
+// request() function wrapper with POST verb
 function post(url,callback,data) {
     return request(url,callback,data,'POST')
 }
-/**
- * request() function wrapper with GET verb
- */
+// request() function wrapper with GET verb
 function get(url,callback,data) {
     return request(url,callback,data,'GET')
 }
+
+(function() {
+  'use strict';
+  window.addEventListener('load', function() {
+    // Fetch all the forms we want to apply custom Bootstrap validation styles to
+    var forms = document.getElementsByClassName('needs-validation');
+    // Loop over them and prevent submission
+    var validation = Array.prototype.filter.call(forms, function(form) {
+      form.addEventListener('submit', function(event) {
+        if (form.checkValidity() === false) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        form.classList.add('was-validated');
+      }, false);
+    });
+  }, false);
+})();
+
+
+function b64EncodeUnicode(str) {
+    // first we use encodeURIComponent to get percent-encoded UTF-8,
+    // then we convert the percent encodings into raw bytes which
+    // can be fed into btoa.
+    return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g,
+        function toSolidBytes(match, p1) {
+            return String.fromCharCode('0x' + p1);
+    }));
+}
+
+
+(function() {
+  'use strict';
+    window.addEventListener('load', function() {
+        document.addEventListener('click', function(event) {
+            if (typeof event.target.dataset.deleteRow !== 'undefined') {
+                var url = b64EncodeUnicode(url);
+                request('/likes/'+url, function(error, data) {
+                    console.log(data);
+                }, null, 'DELETE')
+            }
+        }, false)
+    })
+})();
 
 </script>
 {% endblock %}

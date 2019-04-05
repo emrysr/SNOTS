@@ -9,6 +9,8 @@ ini_set('display_errors',1);
 ini_set('display_startup_errors',1);
 error_reporting(-1);
 
+// Start PHP session
+session_start(); //by default requires session storage
 
 $db = new PDO('sqlite:'.dirname(__DIR__) . '/db/test.db');
 
@@ -36,10 +38,21 @@ $c['notFoundHandler'] = function ($c) {
 $app = new \Slim\App($c);
 
 
+
+// GET CONTAINER
+//-----------------
+$container = $app->getContainer();
+
+
+//-----------------
+// FLASH MESSAGES
+// Register provider
+$container['flash'] = function () {
+    return new \Slim\Flash\Messages();
+};
+
 //-----------------
 // TWIG TEMPLATES
-// Get container
-$container = $app->getContainer();
 
 // Register component on container
 $container['view'] = function ($container) {
@@ -56,17 +69,23 @@ $container['view'] = function ($container) {
 
     return $view;
 };
-
-
+$base64_filter = new Twig_SimpleFilter('base64', function ($string) {
+    return base64_encode($string);
+});
+$container->get('view')->getEnvironment()->addFilter($base64_filter);
 
 //ROUTES
 //-----------------
 
 $app->get('/', function (Request $request, Response $response, array $args) use ($db) {
     $query = "SELECT timestamp,url,count(*) as total FROM likes GROUP BY url";
-    return $this->view->render($response, 'home.html.twig',[
-        'rows'=>$db->query($query),
-        'title'=>'list'
+    $sth = $db->prepare($query);
+    $sth->execute();
+
+    return $this->view->render($response, 'home.html.twig', [
+        'urls' => $sth->fetchAll(PDO::FETCH_ASSOC),
+        'title' =>'list',
+        'messages' => $this->flash->getMessages()
     ]);
 })->setName('home');
 
@@ -80,6 +99,27 @@ $app->get('/likes', function (Request $request, Response $response, array $args)
             'likes' => $sth->fetchAll(PDO::FETCH_ASSOC)
         ]
     ]);
+});
+// base64 encoded url passed as parameter to get detail on individual urls
+$app->get('/likes/{url:(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?}', function (Request $request, Response $response, array $args) use ($db) {
+    if ($url = base64_decode($args['url'], true)) {
+        $query = sprintf("SELECT timestamp as latest,url,count(*) as likes FROM likes WHERE url = '%s' GROUP BY url ORDER BY latest DESC", $url);
+        $sth = $db->prepare($query);
+        $sth->execute();
+        $likes = $sth->fetchAll(PDO::FETCH_ASSOC);
+        // if found return JSON object
+        if (count($likes) === 1) {
+            return $response->withJson([
+                'data'=> [
+                    'likes' => $likes
+                ]
+            ]);
+        } else {
+            $this->flash->addMessage('danger', 'Not Found');
+        }
+    }
+    // redirect to home if passed url not decoded correctly or if record not found
+    return $response->withStatus(302)->withHeader('Location', $this->get('router')->pathFor('home'));
 });
 
 $app->post('/likes', function(Request $request, Response $response, array $args) use ($db) {
@@ -96,6 +136,28 @@ $app->post('/likes', function(Request $request, Response $response, array $args)
             'last-inserted'=>$db->lastInsertId()
         ]
     ], 200);
+});
+
+$app->delete('/likes', function(Request $request, Response $response, array $args) use ($db) {
+    if ($url = base64_decode($args['url'], true)) {
+        $query = sprintf("SELECT FROM likes where url = '%s'", $url);
+        $sth = $db->prepare($query);
+        $sth->execute();
+
+        if ($sth->rowCount() > 0) {
+            return $response->withJson([
+                'data'=> [
+                    'deleted'=>$url
+                ]
+            ], 200);
+        }
+    }
+    return $response->withJson([
+        'data'=> [
+            'success' => false,
+            'message' => sprintf('%s not deleted',$url)
+        ]
+    ], 400);
 });
 
 

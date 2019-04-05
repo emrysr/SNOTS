@@ -22,12 +22,24 @@
         stroke: currentColor;
         fill: currentColor;
     }
+    #notifications {
+        top: -.3rem;
+        z-index: 1031;
+    }
     </style>
     {% block css %}
     {% endblock %}
 </head>
 
 <body class="mt-5 pt-4">
+
+    <div id="notifications" class="container position-fixed d-flex justify-content-center">
+        <div class="position-absolute">
+            {% block messages %}
+            {% endblock %}
+        </div>
+    </div>
+
     <!-- Navigation -->
     <header class="navbar navbar-dark bg-dark shadow-sm fixed-top">
         <div class="container d-flex justify-content-between">
@@ -46,7 +58,7 @@
     <!-- Page Content -->
     <div class="container">
         <div class="row">
-            <div class="col-lg-9 text-center">
+            <div class="col-lg-9">
                 {% block content %}{% endblock %}
             </div>
             <div class="col-lg-3">
